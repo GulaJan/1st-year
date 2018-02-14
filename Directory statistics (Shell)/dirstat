@@ -1,0 +1,146 @@
+#!/bin/sh
+#***********************************
+#File: dirstat
+#Date: 03.03.2016
+#Author: Ján Gula, xgulaj00
+#Project: IOS-DU1
+#Compiler: Bash
+#OS: Windows 10
+#Description: Directory statistics 
+#**********************************
+
+if [ "$#" -eq 1 ];
+then
+  path="$1"
+  FILE_ERE='.^'
+elif [ "$#" -eq 2 ] && [ "$1" == "-i" ];
+then
+  FILE_ERE="$2"
+  path=`pwd`
+elif [ "$#" -eq 3 ] && [ "$1" == "-i" ];
+then
+  FILE_ERE="$2"
+  path="$3"
+elif [ "$#" -eq 0 ];
+then
+  path=`pwd`
+  FILE_ERE='.^'
+else
+  echo "Invalid input."
+  exit 1
+fi
+
+NF="$(find "$path" -name "*" -type f -printf '%f\n' 2>/dev/null| grep -Eiv "$FILE_ERE" | wc -l)"
+ND="$(find "$path" -mindepth 1 -name "*" -type d 2>/dev/null| grep -Eiv "$FILE_ERE" | wc -l )"
+((ND++))
+DD=0
+count=1
+while [ $count -ne 0 ] 
+do
+  ((DD++))
+  count="$(find "$path" -mindepth "$DD" -type d 2>/dev/null| grep -Eiv "$FILE_ERE" | wc -l )"
+done
+
+total_file_size="$(find "$path" -type f -printf '%s\n' 2>/dev/null| grep -Eiv "$FILE_ERE" | awk '{ total += $1 }; END { print total; }')"
+MS="$(find "$path" -type f -printf '%s\n' 2>/dev/null| grep -Eiv "$FILE_ERE" | sort -n | awk '
+  BEGIN { count=0; } { size_array[count++] = $1; }
+  END {
+    if((count%2)==1) {
+        median = size_array[int(count/2)];
+    }else {
+        median = (size_array[count/2] + size_array[count/2-1])/2;
+     }
+   printf ("%d", median);
+  }
+')"
+
+echo Root directory: $path
+echo Directories: $ND
+echo Max depth: $DD
+
+if [ "$ND" = "0" ]
+then
+  echo Average no. of files: 0
+else
+  AF="$(expr $NF / $ND)"
+  echo Average no. of files: $AF
+fi
+LF="$(find "$path" -type f -printf '%s\n' 2>/dev/null| grep -Eiv "$FILE_ERE" | sort -nr | head -1 )"
+
+echo All files: $NF
+if [ "$total_file_size" = "0" -o "$LF" = "" ];
+then
+  echo "  Largest file: N/A"
+else
+  echo "  Largest file: $LF"
+fi
+
+
+if [ "$NF" = "0" ];
+then
+  echo "  Average file size: N/A"
+else
+  AS="$(expr $total_file_size / $NF)"
+  echo "  Average file size: $AS"
+fi
+
+if [ $NF = "0" ];
+then
+  echo "  File size median: N/A"
+else
+  echo "  File size median: $MS"
+fi
+
+EL="$(find "$path" -type f -name "*.*" 2>/dev/null| sed 's/^\.//' | grep '\.' | awk -F. '$NF ~ /^[0-z]+$/ {print $NF;}'|sort -u)"
+numberof_ext="$(echo "$EL" | awk '{print NR}' | tail -n -1)"
+EEL="$(echo "$EL" | sort -u | xargs | sed 's/ /,/g')"
+ext_array=($EL)
+((numberof_ext--))
+ext_count=0
+echo "File extensions: $EEL"
+if [ "$EEL" = "" ];
+then
+  exit 0
+fi
+while [ $ext_count -le $numberof_ext ]
+do
+  NEXT="$(find "$path" -type f -name "*.${ext_array[$ext_count]}" 2>/dev/null| wc -l)"
+  LEXT="$(find "$path" -type f -name "*.${ext_array[$ext_count]}" -printf '%s\n' 2>/dev/null| sort -nr | head -1)"
+  curr_total_size="$(find "$path" -type f -name "*.${ext_array[$ext_count]}" -printf '%s\n' 2>/dev/null| awk '{ total += $1 }; END { print total; }')"
+  MEXT="$(find "$path" -type f -name "*.${ext_array[$ext_count]}" -printf '%s\n' 2>/dev/null| sort -n | awk '
+  BEGIN { count=0; } { size_array[count++] = $1; } 
+  END {
+    if((count%2)==1) {
+        median = size_array[int(count/2)];
+    }else {
+        median = (size_array[count/2] + size_array[count/2-1])/2;
+     }
+   printf ("%d", median);
+  }'| awk '{ printf ("%d",$1); }')"
+
+  echo Files .${ext_array[$ext_count]} : $NEXT
+
+  if [ "$LEXT" = "0" ] || [ "$LEXT" = "" ];
+  then
+    echo  "  Largest file .${ext_array[$ext_count]} : 0"
+  else
+    echo  "  Largest file .${ext_array[$ext_count]} : $LEXT"
+  fi
+
+  if [ $NEXT -eq 0 ] || [ $curr_total_size -eq 0 ];
+  then
+    echo "  Average file size .${ext_array[$ext_count]} : 0"
+  else
+    AEXT="$(expr $curr_total_size / $NEXT)"
+    echo "  Average file size .${ext_array[$ext_count]} : $AEXT"
+  fi
+
+  if [ $NEXT -eq 0 ];
+  then
+    echo  "  File size median .${ext_array[$ext_count]} : 0"
+  else
+    echo  "  File size median .${ext_array[$ext_count]} : $MEXT"
+  fi
+  (( ext_count++ ))
+done
+exit 0
